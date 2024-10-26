@@ -5,6 +5,28 @@
 #include <string.h>
 #include "parser.h"
 
+static char* history[MAX_HISTORY]; // History array
+static int history_count = 0; // Counter for history
+
+void add_to_history(const char* cmdline) {
+    if (history_count < MAX_HISTORY) {
+        history[history_count++] = strdup(cmdline); // Store a copy of the command
+    } else {
+        // Optionally remove the oldest command or handle overflow
+        free(history[0]); // Free the oldest command
+        for (int i = 1; i < MAX_HISTORY; i++) {
+            history[i - 1] = history[i]; // Shift commands up
+        }
+        history[MAX_HISTORY - 1] = strdup(cmdline); // Add new command
+    }
+}
+
+void print_history() {
+    for (int i = 0; i < history_count; i++) {
+        printf("%d %s\n", i + 1, history[i]);
+    }
+}
+
 char* read_cmd(char* prompt, FILE* fp) {
     printf("%s", prompt);
     int c;
