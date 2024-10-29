@@ -1,7 +1,7 @@
-#ifndef PROMPT_H
-#define PROMPT_H
+#ifndef PROMPT2_H
+#define PROMPT2_H
 
 void generate_prompt();
 
-#endif // PROMPT_H
+#endif // PROMPT2_H
 
