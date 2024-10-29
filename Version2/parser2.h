@@ -1,7 +1,8 @@
-#ifndef PARSER_H
-#define PARSER_H
+#ifndef PARSER2_H
+#define PARSER2_H
 
 char **parse_command(char *cmdline);
+int parse_pipes(char *cmdline, char **commands);
 
-#endif // PARSER_H
+#endif // PARSER2_H
 
