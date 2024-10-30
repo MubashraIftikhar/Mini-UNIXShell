@@ -1,5 +1,7 @@
-// prompt3.c
-#include "prompt3.h"
+#include <stdio.h>
+#include <unistd.h>
+#include <pwd.h>
+#include <string.h>
 
 void generate_prompt() {
     uid_t uid = getuid();

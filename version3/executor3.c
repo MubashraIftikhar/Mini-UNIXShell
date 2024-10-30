@@ -1,88 +1,133 @@
-// executor3.c
-
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <fcntl.h>
-#include "parser3.h"
 #include "executor3.h"
 
-void handle_sigchld(int sig) {
-    while (waitpid(-1, NULL, WNOHANG) > 0);
-}
+#define MAX_ARGS 100
 
-void execute_command(CommandInfo *cmd_info) {
-    int i;
-    int pipefds[2 * (cmd_info->num_commands - 1)];
+void execute_command(char *cmd) {
+    char *args[MAX_ARGS];
     pid_t pid;
+    int background = 0;
+    int fd;
 
-    // Set up pipes for commands if there are multiple commands
-    for (i = 0; i < cmd_info->num_commands - 1; i++) {
-        if (pipe(pipefds + i * 2) < 0) {
-            perror("pipe failed");
-            exit(1);
-        }
+    // Remove trailing newline
+    cmd[strcspn(cmd, "\n")] = 0;
+
+    // Check for background execution
+    if (cmd[strlen(cmd) - 1] == '&') {
+        background = 1;
+        cmd[strlen(cmd) - 1] = 0; // Remove '&' from command
     }
 
-    // Iterate over commands and fork processes
-    for (i = 0; i < cmd_info->num_commands; i++) {
-        pid = fork();
-        if (pid == 0) { // Child process
-            // Handle redirection
-            if (i == 0 && cmd_info->infile) {
-                int fd_in = open(cmd_info->infile, O_RDONLY);
-                if (fd_in < 0) perror("open infile");
-                dup2(fd_in, STDIN_FILENO);
-                close(fd_in);
-            }
+    // Handle I/O Redirection
+    char *input_file = NULL;
+    char *output_file = NULL;
+    char *token = strtok(cmd, " ");
+    int i = 0;
 
-            if (i == cmd_info->num_commands - 1 && cmd_info->outfile) {
-                int fd_out = open(cmd_info->outfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-                if (fd_out < 0) perror("open outfile");
-                dup2(fd_out, STDOUT_FILENO);
-                close(fd_out);
-            }
+    while (token != NULL) {
+        // Handle input redirection
+        if (strcmp(token, "<") == 0) {
+            input_file = strtok(NULL, " ");
+        } 
+        // Handle output redirection
+        else if (strcmp(token, ">") == 0) {
+            output_file = strtok(NULL, " ");
+        } 
+        // Store argument
+        else {
+            args[i++] = token;
+        }
+        token = strtok(NULL, " ");
+    }
+    args[i] = NULL; // Null-terminate the arguments array
 
-            // Pipe handling
-            if (i > 0) { // Connect to previous command's output
-                dup2(pipefds[(i - 1) * 2], STDIN_FILENO);
-            }
-            if (i < cmd_info->num_commands - 1) { // Connect to next command's input
-                dup2(pipefds[i * 2 + 1], STDOUT_FILENO);
-            }
-
-            // Close all pipe file descriptors
-            for (int j = 0; j < 2 * (cmd_info->num_commands - 1); j++) {
-                close(pipefds[j]);
-            }
-
-            // Execute command
-            char *args[MAX_ARGS];
-            parse_command(cmd_info->commands[i], args);
-            if (execvp(args[0], args) == -1) {
-                perror("execvp failed");
+    // Fork a new process
+    pid = fork();
+    if (pid == 0) {
+        // Child process
+        if (input_file) {
+            fd = open(input_file, O_RDONLY);
+            if (fd < 0) {
+                perror("Error opening input file");
                 exit(1);
             }
-        } else if (pid < 0) {
-            perror("fork failed");
-            exit(1);
+            dup2(fd, STDIN_FILENO); // Redirect input
+            close(fd);
         }
-    }
+        if (output_file) {
+            fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd < 0) {
+                perror("Error opening output file");
+                exit(1);
+            }
+            dup2(fd, STDOUT_FILENO); // Redirect output
+            close(fd);
+        }
 
-    // Close all pipe file descriptors in the parent
-    for (i = 0; i < 2 * (cmd_info->num_commands - 1); i++) {
-        close(pipefds[i]);
-    }
-
-    // Background job handling
-    if (cmd_info->background) {
-        printf("[1] %d\n", pid);
+        execvp(args[0], args);
+        perror("execvp failed"); // Handle exec failure
+        exit(1);
+    } else if (pid > 0) {
+        // Parent process
+        static int job_count = 0; // Static variable to keep track of background jobs
+        if (!background) {
+            waitpid(pid, NULL, 0); // Wait for foreground process
+        } else {
+            job_count++; // Increment job count for background jobs
+            printf("[%d] %d\n", job_count, pid); // Print job number and PID
+        }
     } else {
-        // Wait for all child processes if running in foreground
-        for (i = 0; i < cmd_info->num_commands; i++) {
-            wait(NULL);
+        perror("fork failed"); // Handle fork failure
+    }
+}
+
+void handle_pipe(char *cmd) {
+    char *commands[2];
+    char *token = strtok(cmd, "|");
+    int i = 0;
+
+    // Split the command by pipe
+    while (token != NULL && i < 2) {
+        commands[i++] = token;
+        token = strtok(NULL, "|");
+    }
+    commands[i] = NULL; // Null-terminate the commands array
+
+    if (i == 2) {
+        int fd[2];
+        pid_t pid1, pid2;
+
+        pipe(fd); // Create a pipe
+
+        // First command
+        if ((pid1 = fork()) == 0) {
+            dup2(fd[1], STDOUT_FILENO); // Redirect stdout to pipe
+            close(fd[0]); // Close unused read end
+            execute_command(commands[0]);
+            exit(0);
         }
+
+        // Second command
+        if ((pid2 = fork()) == 0) {
+            dup2(fd[0], STDIN_FILENO); // Redirect stdin from pipe
+            close(fd[1]); // Close unused write end
+            execute_command(commands[1]);
+            exit(0);
+        }
+
+        close(fd[0]);
+        close(fd[1]);
+        waitpid(pid1, NULL, 0); // Wait for first command
+        waitpid(pid2, NULL, 0); // Wait for second command
+    } else {
+        // If not enough commands, execute normally
+        execute_command(commands[0]);
     }
 }
 
