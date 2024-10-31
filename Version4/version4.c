@@ -1,9 +1,11 @@
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <readline/readline.h>
 #include <readline/history.h>
 
@@ -119,6 +121,13 @@ void process_command(char *input) {
     }
 }
 
+// Signal handler for SIGCHLD
+void sigchld_handler(int signum) {
+    int saved_errno = errno; // Save errno to restore later
+    while (waitpid(-1, NULL, WNOHANG) > 0);
+    errno = saved_errno; // Restore errno
+}
+
 void handle_history_commands(char *input) {
     if (input[0] == '!') {
         int cmd_num = 0;
@@ -143,6 +152,12 @@ void handle_history_commands(char *input) {
 }
 
 int main() {
+    // Set up signal handler for SIGCHLD
+    struct sigaction sa;
+    sa.sa_handler = sigchld_handler;
+    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP; // Restart interrupted system calls
+    sigaction(SIGCHLD, &sa, NULL);
+
     char *input;
     char prompt[MAX_PROMPT_SIZE];
 
