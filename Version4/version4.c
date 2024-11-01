@@ -13,8 +13,8 @@
 #define MAX_HISTORY 10
 
 void display_prompt(char *prompt) {
-    char cwd[MAX_PROMPT_SIZE - 20];  // Reserve space for the prompt prefix
-    getcwd(cwd, sizeof(cwd) - 1);    // Limit cwd to prevent truncation
+    char cwd[MAX_PROMPT_SIZE - 20];
+    getcwd(cwd, sizeof(cwd) - 1);
     snprintf(prompt, MAX_PROMPT_SIZE, "PUCITshell@%.230s: ", cwd);
 }
 
@@ -24,8 +24,30 @@ void process_cd_command(char *path) {
     }
 }
 
+void handle_history_commands(char *input) {
+    if (input[0] == '!') {
+        HIST_ENTRY **history_entries = history_list();
+        int history_count = history_length;
+        int cmd_num;
+
+        // Determine command number or position
+        if (input[1] == '-') {
+            cmd_num = history_count;  // Last command (!-1)
+        } else {
+            cmd_num = atoi(input + 1);
+        }
+
+        if (cmd_num > 0 && cmd_num <= history_count) {
+            // Copy the command from history to input
+            strcpy(input, history_entries[cmd_num - 1]->line);
+        } else {
+            fprintf(stderr, "No such command in history.\n");
+            input[0] = '\0'; // Invalidate the input
+        }
+    }
+}
+
 void process_command(char *input) {
-    // Tokenize the input for processing
     char *args[256];
     char *token = strtok(input, " ");
     int arg_count = 0;
@@ -46,7 +68,7 @@ void process_command(char *input) {
             out_redirect = 1;
         } else if (strcmp(token, "|") == 0) {
             pipe_used = 1;
-            break; // Exit the loop at the first pipe
+            break;
         } else if (strcmp(token, "&") == 0) {
             background = 1;
         } else {
@@ -91,7 +113,6 @@ void process_command(char *input) {
                     dup2(pipe_fds[0], STDIN_FILENO);
                     close(pipe_fds[1]);
 
-                    // Prepare arguments for the second command
                     char *next_args[256];
                     int i = 0;
                     while (token != NULL) {
@@ -121,41 +142,19 @@ void process_command(char *input) {
     }
 }
 
-// Signal handler for SIGCHLD
 void sigchld_handler(int signum) {
-    int saved_errno = errno; // Save errno to restore later
+    int saved_errno = errno;
     while (waitpid(-1, NULL, WNOHANG) > 0);
-    errno = saved_errno; // Restore errno
-}
-
-void handle_history_commands(char *input) {
-    if (input[0] == '!') {
-        int cmd_num = 0;
-        if (input[1] == '-') {
-            cmd_num = -1;
-        } else {
-            cmd_num = atoi(input + 1);
-        }
-
-        HIST_ENTRY **history_entries = history_list();
-        int history_length = history_length;
-
-        if (cmd_num == -1 && history_length > 0) {
-            strcpy(input, history_entries[history_length - 1]->line);
-        } else if (cmd_num > 0 && cmd_num <= history_length) {
-            strcpy(input, history_entries[cmd_num - 1]->line);
-        } else {
-            fprintf(stderr, "No such command in history.\n");
-            input[0] = '\0';
-        }
-    }
+    errno = saved_errno;
 }
 
 int main() {
-    // Set up signal handler for SIGCHLD
+    using_history();
+    stifle_history(MAX_HISTORY); // Limit history to MAX_HISTORY entries
+
     struct sigaction sa;
     sa.sa_handler = sigchld_handler;
-    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP; // Restart interrupted system calls
+    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
     sigaction(SIGCHLD, &sa, NULL);
 
     char *input;
@@ -179,7 +178,7 @@ int main() {
             }
         }
 
-        free(input);  // Clean up the input buffer
+        free(input);
     }
 
     return 0;
