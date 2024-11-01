@@ -27,7 +27,7 @@ void handle_sigchld(int sig) {
         // Remove the job from the jobs list
         for (int i = 0; i < job_count; i++) {
             if (jobs[i].pid == pid) {
-                printf("\n[Job %d] %s finished\n", i + 1, jobs[i].command);
+              // printf("\n[Job %d] %s finished\n", i + 1, jobs[i].command);
                 for (int j = i; j < job_count - 1; j++) {
                     jobs[j] = jobs[j + 1];
                 }
