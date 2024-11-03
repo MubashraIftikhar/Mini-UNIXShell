@@ -25,6 +25,7 @@ Shell is written in C and relies on the following:
   * **Parser.c**: This file contains read_cmd function to read commands from input and tokenize to split commands into arguments.
   * **Executor.c**: This file contains function that forks a new process using fork().In the child process, it attempts to execute the command using execvp()
   * **Main.c**
+
  <br> **FEATURES:** <br>
     Overall The shell generates a dynamic prompt that displays the username, hostname, and current working directory. <br>The format of the prompt is: ```PUCITshell:username@hostname:current_directory$``` . <br>We can retrieve Present working directory using **pwd**  <br>Also we can create , remove and list directory using (mkdir,rmdir,ls) respectively.
 We can exit shell using Ctrl-D
@@ -38,6 +39,7 @@ We can exit shell using Ctrl-D
   * **Parser2.c**: Theis files handle the parsing of user commands, splitting input lines into arguments and parsing pipe-separated commands.
   * **Executor2.c**: These files manage the execution of commands, including handling piping, redirection, and executing the parsed commands in child processes.
   * **Main2.c**:  This file contains the core logic of the shell program, managing user input, history tracking, and the overall flow of command execution
+
 <br> **FEATURES:** <br>
     This shell contain feautures from Version1.<br>
     Enhanced Features contain Call to handle_redirection_and_pipes() to process and execute non-builtin commands.<br>
@@ -54,6 +56,7 @@ We can exit shell using Ctrl-D
   * **Parser.c**:  Contains logic for parsing commands 
   * **Executor3.c**: Handles command execution, including background processes, I/O redirection, and pipes.
   * **Main.c**
+    
  <br> **FEATURES:** <br>
     Overall The shell containt functionality for signal handling.
     <br>Placing commands (external only) in the background
@@ -62,3 +65,35 @@ We can exit shell using Ctrl-D
 <br>**USAGE**<br> 
 <pre> gcc -o myshellv4 version4.c -lreadline </pre>
 <pre> ./myshellv4 </pre>
+<br> **FEATURES:** <br>
+<br>The File **version4.c** contains Functionality of all above version.
+<br>Additional Feactures include handling history using Arrow key
+<br>Moreover you can re-run command using !<number>
+
+## Version05
+<br>**USAGE**<br> 
+<pre> gcc -o myshellv5 version5.c -lreadline </pre>
+<pre> ./myshellv5 </pre>
+
+<br> **FEATURES:** <br>
+<br>The File **version5.c** contains Functionality of all above version integrated into it.
+cd: shouldchange the working directory
+ * **exit**: shouldterminate your shell
+ * **jobs**: provide a numbered list of processes currently executing in the background
+ * **kill**:should terminate the process number in the list of background processes returned by jobs by sending it a SIGKILL
+ * **help**:lists the available built-in commands and their syntax
+
+## Version06
+<br>**USAGE**<br> 
+<pre> gcc -o myshell6 version6.c -lreadline </pre>
+<pre> ./myshell6 </pre>
+
+<br> **FEATURES:** <br>
+ The shell handles two types of variables: local/user-defined and environment variables.
+ * **get**: get variables set by users
+ * **set**: set user-defined variables
+ * **list**:list variables
+
+## Credits
+This project was developed by Mubashra Iftikhar, a student at FCIT Punjab University,Lahore. It represents a comprehensive effort to understand and replicate the workings of a Unix shell, focusing on process management, signal handling, and user interaction.<br>
+The foundation of this shell is inspired by the invaluable resources (https://youtu.be/F7oAWvh5J_o?si=_DK3xzetUApoysV-) provided by Professor Arif Butt.
