@@ -16,9 +16,9 @@
 #define MAX_VAR_VALUE 128
 
 typedef struct {
-    char name[MAX_VAR_NAME];
-    char value[MAX_VAR_VALUE];
-    int global;  // 1 for global, 0 for local
+    char name[MAX_VAR_NAME]; // Variable name
+    char value[MAX_VAR_VALUE]; // Variable value
+    int global; // 1 for global, 0 for local
 } Var;
 
 Var variables[MAX_VARS];
@@ -50,8 +50,8 @@ void handle_sigchld(int sig) {
 }
 
 void display_prompt(char *prompt) {
-    char cwd[MAX_PROMPT_SIZE - 20];  // Reserve space for the prompt prefix
-    getcwd(cwd, sizeof(cwd) - 1);    // Limit cwd to prevent truncation
+    char cwd[MAX_PROMPT_SIZE - 20];
+    getcwd(cwd, sizeof(cwd) - 1);
     snprintf(prompt, MAX_PROMPT_SIZE, "PUCITshell@%.230s: ", cwd);
 }
 
@@ -63,15 +63,17 @@ void process_cd_command(char *path) {
 
 void process_help() {
     printf("Built-in commands:\n");
-    printf("cd <path>      : Change directory\n");
-    printf("exit           : Exit the shell\n");
-    printf("jobs           : List background jobs\n");
-    printf("kill <job_id>  : Terminate the specified background job\n");
-    printf("help           : Display this help message\n");
-    printf("set <name> <value> : Set a user-defined variable\n");
-    printf("get <name>     : Get the value of a user-defined variable\n");
-    printf("list           : List all user-defined variables\n");
-    printf("!<number>      : Re-execute a command from history\n");
+    printf("cd <path>      : Change directory\n");
+    printf("exit           : Exit the shell\n");
+    printf("jobs           : List background jobs\n");
+    printf("kill <job_id>  : Terminate the specified background job\n");
+    printf("help           : Display this help message\n");
+    printf("set <name> <value> [global|local]: Set a user-defined variable\n");
+    printf("get <name>     : Get the value of a user-defined variable\n");
+    printf("list           : List all user-defined variables\n");
+    printf("getenv <name>  : Get the value of an environment variable\n");
+    printf("setenv <name> <value> : Set an environment variable\n");
+    printf("!<number>      : Re-execute a command from history\n");
 }
 
 void list_jobs() {
@@ -141,29 +143,28 @@ void list_variables() {
     }
 }
 
+void set_env_variable(char *name, char *value) {
+    setenv(name, value, 1); // 1 to overwrite existing value
+    printf("Environment variable %s set to %s.\n", name, value);
+}
+
+void get_env_variable(char *name) {
+    char *value = getenv(name);
+    if (value != NULL) {
+        printf("%s=%s\n", name, value);
+    } else {
+        printf("Environment variable %s not found.\n", name);
+    }
+}
+
 void process_command(char *input) {
     char *args[MAX_ARGS];
     char *token = strtok(input, " ");
     int arg_count = 0;
     int background = 0;
-    int in_redirect = 0, out_redirect = 0;
-    char *infile = NULL, *outfile = NULL;
-    int pipe_fds[2];
-    int pipe_used = 0;
 
     while (token != NULL) {
-        if (strcmp(token, "<") == 0) {
-            token = strtok(NULL, " ");
-            infile = token;
-            in_redirect = 1;
-        } else if (strcmp(token, ">") == 0) {
-            token = strtok(NULL, " ");
-            outfile = token;
-            out_redirect = 1;
-        } else if (strcmp(token, "|") == 0) {
-            pipe_used = 1;
-            break; // Exit the loop at the first pipe
-        } else if (strcmp(token, "&") == 0) {
+        if (strcmp(token, "&") == 0) {
             background = 1;
         } else {
             args[arg_count++] = token;
@@ -194,9 +195,10 @@ void process_command(char *input) {
         process_help();
     } else if (strcmp(args[0], "set") == 0) {
         if (args[1] != NULL && args[2] != NULL) {
-            set_variable(args[1], args[2], 0);  // Default to local
+            int global = (args[3] != NULL && strcmp(args[3], "global") == 0) ? 1 : 0;
+            set_variable(args[1], args[2], global);
         } else {
-            printf("Usage: set <name> <value>\n");
+            printf("Usage: set <name> <value> [global|local]\n");
         }
     } else if (strcmp(args[0], "get") == 0) {
         if (args[1] != NULL) {
@@ -206,90 +208,56 @@ void process_command(char *input) {
         }
     } else if (strcmp(args[0], "list") == 0) {
         list_variables();
+    } else if (strcmp(args[0], "getenv") == 0) {
+        if (args[1] != NULL) {
+            get_env_variable(args[1]);
+        } else {
+            printf("Usage: getenv <name>\n");
+        }
+    } else if (strcmp(args[0], "setenv") == 0) {
+        if (args[1] != NULL && args[2] != NULL) {
+            set_env_variable(args[1], args[2]);
+        } else {
+            printf("Usage: setenv <name> <value>\n");
+        }
     } else {
-        // Forking and executing external commands
+        // Handle external commands (fork and exec)
         pid_t pid = fork();
-        if (pid == 0) {  // Child process
-            if (in_redirect) {
-                int fd_in = open(infile, O_RDONLY);
-                if (fd_in == -1) {
-                    perror("Error opening input file");
-                    exit(EXIT_FAILURE);
-                }
-                dup2(fd_in, STDIN_FILENO);
-                close(fd_in);
+        if (pid == 0) {
+            // Child process
+            if (execvp(args[0], args) == -1) {
+                perror("Execution error");
             }
-            if (out_redirect) {
-                int fd_out = open(outfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-                if (fd_out == -1) {
-                    perror("Error opening output file");
-                    exit(EXIT_FAILURE);
-                }
-                dup2(fd_out, STDOUT_FILENO);
-                close(fd_out);
-            }
-            if (pipe_used) {
-                pipe(pipe_fds);
-                if (fork() == 0) {  // First command process
-                    dup2(pipe_fds[1], STDOUT_FILENO);
-                    close(pipe_fds[0]);
-                    execvp(args[0], args);
-                    perror("exec error");
-                    exit(EXIT_FAILURE);
-                } else {  // Parent process of the first command
-                    dup2(pipe_fds[0], STDIN_FILENO);
-                    close(pipe_fds[1]);
-
-                    // Prepare arguments for the second command
-                    char *next_args[MAX_ARGS];
-                    int i = 0;
-                    while (token != NULL) {
-                        token = strtok(NULL, " ");
-                        if (token != NULL) {
-                            next_args[i++] = token;
-                        }
-                    }
-                    next_args[i] = NULL;
-                    execvp(next_args[0], next_args);
-                    perror("exec error");
-                    exit(EXIT_FAILURE);
-                }
-            } else {
-                execvp(args[0], args);
-                perror("exec error");
-                exit(EXIT_FAILURE);
-            }
-        } else if (pid > 0) {  // Parent process
+            exit(1);
+        } else if (pid < 0) {
+            perror("Fork error");
+        } else {
+            // Parent process
             if (background) {
-                // Store the command for later reference
                 strncpy(jobs[job_count].command, input, MAX_PROMPT_SIZE);
                 jobs[job_count].pid = pid;
                 job_count++;
-                if (job_count > MAX_HISTORY) job_count = MAX_HISTORY;  // Limit jobs
-                printf("[%d]: %s\n", job_count, input);
             } else {
-                wait(NULL);  // Wait for foreground process
+                waitpid(pid, NULL, 0);
             }
-        } else {
-            perror("fork error");
         }
     }
 }
 
 int main() {
-    signal(SIGCHLD, handle_sigchld);  // Handle zombie processes
-
-    char *input;
     char prompt[MAX_PROMPT_SIZE];
+    char *input;
+
+    signal(SIGCHLD, handle_sigchld);
 
     while (1) {
         display_prompt(prompt);
         input = readline(prompt);
-        if (input && *input) {
-            add_history(input);  // Add input to history
+        if (input) {
+            add_history(input);
             process_command(input);
+            free(input);
         }
-        free(input);
     }
 
     return 0;
